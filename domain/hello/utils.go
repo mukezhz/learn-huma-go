@@ -74,7 +74,7 @@ func send(ctx huma.Context, data SSEvent) error {
 	return err
 }
 
-func getSSEOperation(api huma.API, eventTypeMap map[string]any) huma.Operation {
+func getSSEOperation(api huma.API, path string, eventTypeMap map[string]any) huma.Operation {
 	dataSchemas := getDataSchemas(api, eventTypeMap)
 	schema := &huma.Schema{
 		Title:       "Server Sent Events",
@@ -90,7 +90,7 @@ func getSSEOperation(api huma.API, eventTypeMap map[string]any) huma.Operation {
 		Method:      http.MethodGet,
 		Description: "Event Stream",
 		Tags:        []string{"sse"},
-		Path:        "/sse",
+		Path:        path,
 		Summary:     "Stream events to the client",
 	}
 	if op.Responses == nil {

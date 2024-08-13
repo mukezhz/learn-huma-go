@@ -9,7 +9,6 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/mukezhz/learn-huma/pkg/infrastructure"
-	"golang.org/x/sync/errgroup"
 )
 
 type Route struct {
@@ -62,7 +61,47 @@ func RegisterRoute(r *Route) {
 	)
 
 	huma.Get(r.api, "/hello/demo", r.controller.HandleRoot)
-	op := getSSEOperation(r.api.API, map[string]any{
+	op := getSSEOperation(r.api.API, "/sse-gin", map[string]any{
+		"message":      DefaultMessage{},
+		"userCreate":   UserCreatedEvent{},
+		"mailReceived": MailReceivedEvent{},
+	})
+	// op.Middlewares = huma.Middlewares{SSEHeaderMiddleware, r.stream.serveSSE}
+	// huma.Register(r.api, op, func(ctx context.Context, input *SSEInput) (*huma.StreamResponse, error) {
+	// 	return &huma.StreamResponse{
+	// 		Body: func(ctx huma.Context) {
+	// 			clientChan, ok := ctx.Context().Value("clientChan").(ClientChan)
+	// 			if !ok {
+	// 				log.Println("clientChan not found")
+	// 				return
+	// 			}
+
+	// 			// Use errgroup to manage the goroutine
+	// 			g, gctx := errgroup.WithContext(ctx.Context())
+
+	// 			g.Go(func() error {
+	// 				for {
+	// 					select {
+	// 					case <-gctx.Done():
+	// 						return gctx.Err() // Return context error
+	// 					case msg := <-clientChan:
+	// 						send(ctx, SSEvent{
+	// 							Event: "message",
+	// 							Data:  msg,
+	// 						})
+	// 					}
+	// 				}
+	// 			})
+
+	// 			// Wait for the errgroup to finish
+	// 			if err := g.Wait(); err != nil {
+	// 				log.Println("Error occurred: ", err)
+	// 			}
+	// 		},
+	// 	}, nil
+	// })
+
+	op = getSSEOperation(r.api.API, "/sse", map[string]any{
 		"message":      DefaultMessage{},
 		"userCreate":   UserCreatedEvent{},
 		"mailReceived": MailReceivedEvent{},
@@ -71,36 +110,34 @@ func RegisterRoute(r *Route) {
 	huma.Register(r.api, op, func(ctx context.Context, input *SSEInput) (*huma.StreamResponse, error) {
 		return &huma.StreamResponse{
 			Body: func(ctx huma.Context) {
-				clientChan, ok := ctx.Context().Value("clientChan").(ClientChan)
-				if !ok {
-					log.Println("clientChan not found")
-					return
-				}
+				clientID := fmt.Sprintf("%d", time.Now().UnixNano())
+				messageChannel := make(chan string)
 
-				// Use errgroup to manage the goroutine
-				g, gctx := errgroup.WithContext(ctx.Context())
+				sse := NewSSE()
+				sse.AddClient(clientID, messageChannel)
+				defer sse.RemoveClient(clientID)
 
-				g.Go(func() error {
-					for {
-						select {
-						case <-gctx.Done():
-							return gctx.Err() // Return context error
-						case msg := <-clientChan:
-							send(ctx, SSEvent{
-								Event: "message",
-								Data:  msg,
-							})
-						}
+				ticker := time.NewTicker(2 * time.Second)
+				defer ticker.Stop()
+
+				go func() {
+					for msg := range ticker.C {
+						sse.SendMessage(ctx, "The Current Time Is "+msg.Format("2006-01-02 15:04:05"))
 					}
-				})
+				}()
 
-				// Wait for the errgroup to finish
-				if err := g.Wait(); err != nil {
-					log.Println("Error occurred: ", err)
-				}
+				go func() {
+					for msg := range messageChannel {
+						sse.SendMessage(ctx, msg)
+					}
+				}()
+
+				<-ctx.Context().Done()
+				fmt.Println("Client disconnected")
 			},
 		}, nil
 	})
+
 }
 
 var WriteTimeout = 5 * time.Second

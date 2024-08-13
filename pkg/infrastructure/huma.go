@@ -1,6 +1,8 @@
 package infrastructure
 
 import (
+	"log"
+
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/danielgtaylor/huma/v2/adapters/humagin"
 )
@@ -23,5 +25,16 @@ func NewHumaRouter(router *Router) *HumaRouter {
 	api.OpenAPI().Info.Description = "This is a demo API for learning Huma."
 	return &HumaRouter{
 		api,
+	}
+}
+
+type Hello struct {
+	Message string
+}
+
+func NewHello() *Hello {
+	log.Println("hello hehe!!!!")
+	return &Hello{
+		Message: "Hello, World!",
 	}
 }

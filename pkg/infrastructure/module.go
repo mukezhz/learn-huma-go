@@ -8,5 +8,6 @@ var Module = fx.Module(
 	fx.Options(
 		fx.Provide(NewRouter),
 		fx.Provide(NewHumaRouter),
+		fx.Provide(NewHello),
 	),
 )

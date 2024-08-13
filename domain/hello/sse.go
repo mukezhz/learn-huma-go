@@ -1,9 +1,13 @@
 package hello
 
 import (
+	"fmt"
 	"log"
+	"net/http"
 	"sync"
 	"time"
+
+	"github.com/danielgtaylor/huma/v2"
 )
 
 type Message struct {
@@ -85,5 +89,73 @@ func (e *EventStream) listen() {
 				BroadCastAll: true,
 			}
 		}
+	}
+}
+
+// SIMPLE SSE
+type Client struct {
+	ID      string
+	Channel chan string
+}
+
+type SSE struct {
+	clients     map[string]*Client
+	clientMutex sync.RWMutex
+}
+
+func NewSSE() *SSE {
+	return &SSE{
+		clients: make(map[string]*Client),
+	}
+}
+
+func (s *SSE) AddClient(id string, channel chan string) chan string {
+	s.clientMutex.Lock()
+	defer s.clientMutex.Unlock()
+	client := Client{
+		ID:      id,
+		Channel: make(chan string),
+	}
+	s.clients[id] = &client
+	return client.Channel
+}
+
+func (s *SSE) RemoveClient(id string) {
+	s.clientMutex.Lock()
+	defer s.clientMutex.Unlock()
+	if client, ok := s.clients[id]; ok {
+		close(client.Channel) // Close the channel when the client disconnects
+		delete(s.clients, id)
+	}
+}
+
+func (s *SSE) SendMessageToUser(userIDs []string, message string) {
+	s.clientMutex.RLock()
+	defer s.clientMutex.RUnlock()
+	for _, id := range userIDs {
+		if client, ok := s.clients[id]; ok {
+			client.Channel <- message
+		}
+	}
+}
+
+func (s *SSE) BroadcastMessage(message string) {
+	s.clientMutex.RLock()
+	defer s.clientMutex.RUnlock()
+	for _, client := range s.clients {
+		client.Channel <- message
+	}
+}
+
+func (s *SSE) SendMessage(ctx huma.Context, message string) {
+	_, err := fmt.Fprintf(ctx.BodyWriter(), "data: %s\n\n", message)
+	if err != nil {
+		fmt.Printf("Error sending message: %v\n", err)
+		return
+	}
+	if flusher, ok := ctx.BodyWriter().(http.Flusher); ok {
+		flusher.Flush()
+	} else {
+		huma.Error503ServiceUnavailable("Streaming unsupported!")
 	}
 }
